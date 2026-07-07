@@ -1,0 +1,39 @@
+#file names
+2026-06-11-11-47-03
+2026-06-11-11-53-20
+2026-06-16-11-18-09
+2026-06-16-11-26-18
+
+python3 Extract_Frames.py
+
+cp frames_to_annotate/2026-06-11-11-53-20/frame_000120.jpg \
+   frames_to_annotate/2026-06-11-11-53-20/frame_000150.jpg \
+   frames_to_annotate/2026-06-11-11-53-20/frame_000390.jpg \
+   /home/weichien241/ag_bot/DINOv3-Segmentation-Training/Annotated/Images/2026-06-11-11-53-20/
+
+# batch 1 -> master pool, prefixed v1_
+for f in ~/ag_bot/DINOv3-Segmentation-Training/Annotated/Images/2026-06-11-11-47-03/*.jpg; do
+  cp "$f" ~/ag_bot/DINOv3-Segmentation-Training/annotations_combined/images/v1_$(basename "$f")
+done
+for f in ~/ag_bot/DINOv3-Segmentation-Training/Annotated/Output/2026-06-11-11-47-03/*.png; do
+  cp "$f" ~/ag_bot/DINOv3-Segmentation-Training/annotations_combined/masks/v1_$(basename "$f")
+done
+
+# batch 2 -> master pool, prefixed v2_
+for f in ~/ag_bot/DINOv3-Segmentation-Training/Annotated/Images/2026-06-11-11-53-20/*.jpg; do
+  cp "$f" ~/ag_bot/DINOv3-Segmentation-Training/annotations_combined/images/v2_$(basename "$f")
+done
+for f in ~/ag_bot/DINOv3-Segmentation-Training/Annotated/Output/2026-06-11-11-53-20/*.png; do
+  cp "$f" ~/ag_bot/DINOv3-Segmentation-Training/annotations_combined/masks/v2_$(basename "$f")
+done
+
+# batch 3 -> master pool, prefixed v3_
+for f in ~/ag_bot/src/DINOv3-Segmentation-Training/Annotated/Images/2026-06-16-11-18-09/*.jpg; do
+  cp "$f" ~/ag_bot/src/DINOv3-Segmentation-Training/annotations_combined/images/v3_$(basename "$f")
+done
+for f in ~/ag_bot/src/DINOv3-Segmentation-Training/Annotated/Output/2026-06-16-11-18-09/*.png; do
+  cp "$f" ~/ag_bot/src/DINOv3-Segmentation-Training/annotations_combined/masks/v3_$(basename "$f")
+done
+
+ls ~/ag_bot/src/DINOv3-Segmentation-Training/annotations_combined/images | wc -l
+ls ~/ag_bot/src/DINOv3-Segmentation-Training/annotations_combined/masks  | wc -l

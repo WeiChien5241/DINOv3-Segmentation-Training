@@ -1,0 +1,23 @@
+# --- Not published in this repo (local-only parts of the workspace) ---
+/agbot_vision_nav/
+/rgb_camera-main/
+/Papers/
+/ros_bags/
+/videos/
+.vscode/
+.claude/
+/CLAUDE.md
+/HANDOFF.md
+
+# --- Large / regenerable data inside the training pipeline ---
+# Raw extracted frames (regenerate with Extract_Frames.py)
+DINOv3-Segmentation-Training/frames_to_annotate/
+# Train/val splits (regenerate with scripts/split_dataset.py from annotations_combined/)
+DINOv3-Segmentation-Training/dataset_v*/
+# Training outputs & checkpoints (regenerate with Train.py)
+DINOv3-Segmentation-Training/out/
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
