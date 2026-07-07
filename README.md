@@ -22,6 +22,28 @@ This class mapping is load-bearing and must stay consistent across annotation co
 
 Raw extracted frames, the derived `dataset_v*` train/val splits, and training outputs (`out/`, including model checkpoints) are not tracked — they are regenerated from the annotated data using the scripts above.
 
+## Raw rosbag recordings
+
+The raw rosbags the pipeline starts from (~13 GB total) are too large for regular git files, so they are attached as assets to the [`rosbags-v1` release](https://github.com/WeiChien5241/DINOv3-Segmentation-Training/releases/tag/rosbags-v1):
+
+- Date-stamped bags (`2026-06-11-*`, `2026-06-16-*`, `2026-07-07-*`) — real corn/sorghum row recordings from the robot's camera (`/usb_cam/image_raw/compressed`).
+- `sim_run*.bag` — Gazebo simulation runs.
+
+Download everything into `ros_bags/` with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh release download rosbags-v1 --repo WeiChien5241/DINOv3-Segmentation-Training --dir ros_bags
+```
+
+`sim_run_v2.bag` exceeds GitHub's 2 GiB per-asset cap, so it is uploaded as two chunks — rejoin them after downloading:
+
+```bash
+cd ros_bags
+cat sim_run_v2.bag.00.part sim_run_v2.bag.01.part > sim_run_v2.bag
+rm sim_run_v2.bag.??.part
+sha256sum -c SHA256SUMS   # verify all bags
+```
+
 ## Quick start
 
 ```bash
