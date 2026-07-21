@@ -17,6 +17,15 @@ library and auto-detects whether the camera topic is compressed or raw.
 
     # convert EVERY .bag in a folder (the .active file is skipped automatically):
     python3 bag2video.py ~/ag_bot/ros_bags ~/ag_bot/videos
+    
+    # only the Brio:
+    python3 bag2video.py front_compare.bag ~/ag_bot/src/videos /brio_front/image_raw/compressed
+
+    # only the original camera:
+    python3 bag2video.py front_compare.bag ~/ag_bot/src/videos /usb_cam/image_raw/compressed
+
+    # no topic → one mp4 per camera, e.g. front_compare_usb_cam.mp4 and front_compare_brio_front.mp4
+    python3 bag2video.py ~/ag_bot/src/ros_bags/2026-07-14-10-50.bag ~/ag_bot/src/videos
 -----------------------------------------------------------------------------
 """
 
@@ -30,17 +39,24 @@ from rosbags.highlevel import AnyReader
 FALLBACK_FPS = 8.0  # used only if a bag's timestamps can't give an fps
 
 
-def pick_image_connection(reader):
-    """Find an image topic in the bag; prefer a compressed one.
-    Returns (connections_for_that_topic, is_compressed) or (None, None)."""
-    image_conns = [c for c in reader.connections if "image" in c.topic.lower()]
-    if not image_conns:
-        return None, None
-    compressed = [c for c in image_conns
-                  if "Compressed" in c.msgtype or "compressed" in c.topic.lower()]
-    chosen = compressed[0] if compressed else image_conns[0]
-    conns = [c for c in reader.connections if c.topic == chosen.topic]
-    return conns, bool(compressed)
+def image_topics(reader, want_topic=None):
+    """Return {topic: (connections, is_compressed)} for image topics in the bag.
+    If want_topic is given, only that topic (error if absent)."""
+    conns_by_topic = {}
+    for c in reader.connections:
+        if "image" not in c.topic.lower():
+            continue
+        conns_by_topic.setdefault(c.topic, []).append(c)
+    if want_topic is not None:
+        if want_topic not in conns_by_topic:
+            print(f"  topic '{want_topic}' not in bag. Image topics present: "
+                  f"{sorted(conns_by_topic)}")
+            return {}
+        conns_by_topic = {want_topic: conns_by_topic[want_topic]}
+    return {
+        topic: (conns, "Compressed" in conns[0].msgtype or "compressed" in topic.lower())
+        for topic, conns in conns_by_topic.items()
+    }
 
 
 def decode(msg, is_compressed):
@@ -58,69 +74,70 @@ def decode(msg, is_compressed):
     return img
 
 
-def convert_one(bag_path: Path, out_dir: Path):
+def convert_one(bag_path: Path, out_dir: Path, want_topic=None):
     if bag_path.name.endswith(".active"):
         print(f"  skipping {bag_path.name} (unfinished .active recording)")
         return
     try:
         with AnyReader([bag_path]) as reader:
-            conns, is_compressed = pick_image_connection(reader)
-            if not conns:
-                topics = sorted({c.topic for c in reader.connections})
-                print(f"  no image topic in {bag_path.name}. Topics present: {topics}")
+            topics = image_topics(reader, want_topic)
+            if not topics:
+                print(f"  no image topic in {bag_path.name}")
                 return
+            for topic, (conns, is_compressed) in topics.items():
+                kind = "compressed" if is_compressed else "raw"
+                print(f"  {bag_path.name}: '{topic}' ({kind})")
 
-            kind = "compressed" if is_compressed else "raw"
-            print(f"  {bag_path.name}: using '{conns[0].topic}' ({kind})")
-
-            # pass 1: collect timestamps (ns) for fps, decode first frame for size
-            timestamps, width, height = [], None, None
-            for conn, t, raw in reader.messages(connections=conns):
-                timestamps.append(t)
-                if width is None:
-                    frame = decode(reader.deserialize(raw, conn.msgtype), is_compressed)
-                    if frame is None:
-                        print("  could not decode first frame; skipping")
-                        return
-                    height, width = frame.shape[:2]
-
-            if len(timestamps) < 2:
-                print("  fewer than 2 frames; skipping")
-                return
-            dur = (timestamps[-1] - timestamps[0]) / 1e9
-            fps = (len(timestamps) - 1) / dur if dur > 0 else FALLBACK_FPS
-
-            # pass 2: encode the video
-            out_dir.mkdir(parents=True, exist_ok=True)
-            out_path = out_dir / (bag_path.stem + ".mp4")
-            writer = cv2.VideoWriter(str(out_path),
-                                     cv2.VideoWriter_fourcc(*"mp4v"),
-                                     fps, (width, height))
-            try:
+                # pass 1: collect timestamps (ns) for fps, decode first frame for size
+                timestamps, width, height = [], None, None
                 for conn, t, raw in reader.messages(connections=conns):
-                    frame = decode(reader.deserialize(raw, conn.msgtype), is_compressed)
-                    if frame is not None:
-                        writer.write(frame)
-            finally:
-                writer.release()
-            print(f"  -> {out_path}  ({len(timestamps)} frames, {fps:.2f} fps, {width}x{height})")
+                    timestamps.append(t)
+                    if width is None:
+                        frame = decode(reader.deserialize(raw, conn.msgtype), is_compressed)
+                        if frame is None:
+                            print("  could not decode first frame; skipping")
+                            break
+                        height, width = frame.shape[:2]
+
+                if len(timestamps) < 2 or width is None:
+                    print("  fewer than 2 frames; skipping")
+                    continue
+                dur = (timestamps[-1] - timestamps[0]) / 1e9
+                fps = (len(timestamps) - 1) / dur if dur > 0 else FALLBACK_FPS
+
+                # pass 2: encode the video
+                out_dir.mkdir(parents=True, exist_ok=True)
+                suffix = topic.strip("/").replace("/image_raw", "").replace("/compressed", "").replace("/", "_")
+                out_path = out_dir / f"{bag_path.stem}_{suffix}.mp4"
+                writer = cv2.VideoWriter(str(out_path),
+                                         cv2.VideoWriter_fourcc(*"mp4v"),
+                                         fps, (width, height))
+                try:
+                    for conn, t, raw in reader.messages(connections=conns):
+                        frame = decode(reader.deserialize(raw, conn.msgtype), is_compressed)
+                        if frame is not None:
+                            writer.write(frame)
+                finally:
+                    writer.release()
+                print(f"  -> {out_path}  ({len(timestamps)} frames, {fps:.2f} fps, {width}x{height})")
     except Exception as e:
         print(f"  ERROR on {bag_path.name}: {e}")
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         print(__doc__)
         sys.exit(1)
     inp = Path(sys.argv[1]).expanduser()
     out_dir = Path(sys.argv[2]).expanduser()
+    topic = sys.argv[3] if len(sys.argv) == 4 else None
     bags = sorted(inp.glob("*.bag")) if inp.is_dir() else [inp]
     if not bags:
         print(f"No .bag files found in {inp}")
         sys.exit(1)
     print(f"Converting {len(bags)} bag(s) -> {out_dir}")
     for b in bags:
-        convert_one(b, out_dir)
+        convert_one(b, out_dir, topic)
     print("Done.")
 
 
